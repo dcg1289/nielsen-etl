@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Secrets / local config overrides
+.env
+.env.*
+settings.local.yaml
+
+# Pipeline runtime (keep folder structure via .gitkeep)
+incoming/*
+!incoming/.gitkeep
+processing/*
+!processing/.gitkeep
+archive/*
+!archive/.gitkeep
+error/*
+!error/.gitkeep
+extracted/*
+!extracted/.gitkeep
+logs/*
+!logs/.gitkeep
+
+# IDE
+.vscode/
+.idea/

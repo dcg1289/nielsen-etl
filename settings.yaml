@@ -1,0 +1,16 @@
+project:
+  name: nielsen_etl
+  environment: dev
+
+paths:
+  incoming: incoming
+  processing: processing
+  archive: archive
+  error: error
+  extracted: extracted
+  logs: logs
+
+sql:
+  server: ""
+  database: ""
+
