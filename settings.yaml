@@ -9,6 +9,31 @@ paths:
   error: error
   extracted: extracted
   logs: logs
+  ddm_base: "C:/Users/CARDZ005/OneDrive - KDP/General - LAB SPBD Data/Nielsen/03_Bases_Nielsen/01 DDM"
+  catalogs: "C:/Users/CARDZ005/OneDrive - KDP/General - LAB SPBD Data/Nielsen/01_Custom_Catalogs/SQL"
+
+ingestion:
+  categories:
+    - CSD_RT
+    - CSD_ST
+    - JUGOS_RT
+    - JUGOS_ST
+
+transformation:
+  join:
+    output_file: joined.txt
+  subset:
+    input_file: joined.txt
+    output_file: joined_2026_07.txt
+    year: 2026
+    month: 7
+  catalog:
+    input_file: joined_2026_07.txt
+    output_file: joined_2026_07_catalog.txt
+    st_period_offset: 5800
+    hierarchy_level_names:
+      - SEGMENTO I
+      - PRESENTACION REGULAR
 
 sql:
   server: ""
