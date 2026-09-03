@@ -15,6 +15,13 @@ SEGMENTO_I_LEVEL = "SEGMENTO I"
 CONTROLLED_LABEL_CORP = "CONTROLLED LABEL"
 CONTROLLED_LABEL_CORP_COLUMN = "CSTM_948001"
 SEGMENTO_I_COLUMN = "CSTM_940105"
+JUGOS_CATEGORIES = frozenset({"JUGOS_RT", "JUGOS_ST"})
+ST_UPC_CATEGORIES = frozenset({"CSD_ST", "JUGOS_ST"})
+ST_UPC_LEVEL = "UPC"
+JUGOS_PESO_LEVEL = "PESO CONVERTIDO"
+JUGOS_FABRICANTE_LEVEL = "FABRICANTE UNIF.I"
+JUGOS_CONTROLLED_LABEL_CORP_COLUMN = "CSTM_309849"
+DOL_POSITIVE_FILTER = "try_cast(DOL AS DOUBLE) > 0"
 CATALOG_COLUMNS = ("ID_PRODUCT", "ID_P", "ID_MARKET")
 
 CONTROLLED_LABEL_PRODUCT_MAP: tuple[dict[str, str], ...] = (
@@ -213,6 +220,28 @@ def _build_hierarchy_where_sql(hierarchy_level_names: list[str]) -> str:
     return " OR ".join(conditions)
 
 
+def _is_jugos_category(category: str) -> bool:
+    return category.upper() in JUGOS_CATEGORIES
+
+
+def _is_st_upc_category(category: str) -> bool:
+    return category.upper() in ST_UPC_CATEGORIES
+
+
+def _build_st_upc_hierarchy_where_sql() -> str:
+    return f"hierarchy_level_name = {_sql_literal(ST_UPC_LEVEL)}"
+
+
+def _build_jugos_hierarchy_where_sql() -> str:
+    return (
+        f"hierarchy_level_name = {_sql_literal(JUGOS_PESO_LEVEL)} "
+        f"OR ("
+        f"hierarchy_level_name = {_sql_literal(JUGOS_FABRICANTE_LEVEL)} "
+        f"AND {JUGOS_CONTROLLED_LABEL_CORP_COLUMN} = {_sql_literal(CONTROLLED_LABEL_CORP)}"
+        ")"
+    )
+
+
 def _source_columns(connection: duckdb.DuckDBPyConnection, source: str) -> set[str]:
     columns = connection.execute(
         f"""
@@ -255,6 +284,7 @@ def catalog_join_folder(
     folder_path: Path,
     catalog_path: Path,
     is_st: bool,
+    category: str = "",
     input_file: str = DEFAULT_INPUT_FILE,
     output_file: str = DEFAULT_OUTPUT_FILE,
     period_offset: int = 5800,
@@ -300,9 +330,20 @@ def catalog_join_folder(
     connection = duckdb.connect()
     try:
         source_columns = _source_columns(connection, source)
-        use_controlled_label = _has_controlled_label_columns(source_columns)
+        is_st_upc = _is_st_upc_category(category)
+        is_jugos = _is_jugos_category(category) and not is_st_upc
 
-        if use_controlled_label:
+        if is_st_upc:
+            hierarchy_where_sql = _build_st_upc_hierarchy_where_sql()
+            controlled_label_cte = ""
+            controlled_label_join = ""
+            final_id_product_expr = catalog_id_product_expr
+        elif is_jugos:
+            hierarchy_where_sql = _build_jugos_hierarchy_where_sql()
+            controlled_label_cte = ""
+            controlled_label_join = ""
+            final_id_product_expr = catalog_id_product_expr
+        elif _has_controlled_label_columns(source_columns):
             hierarchy_where_sql = _build_hierarchy_where_sql(hierarchy_filter)
             controlled_label_cte = _build_controlled_label_cte()
             controlled_label_join = f"""
@@ -331,12 +372,23 @@ def catalog_join_folder(
             final_id_product_expr = catalog_id_product_expr
 
         print(f"\nAplicando catalogos en: {folder_path}")
-        print(f"  Filtro hierarchy_level_name IN ({', '.join(hierarchy_filter)})")
-        if use_controlled_label and SEGMENTO_I_LEVEL in hierarchy_filter:
+        if is_st_upc:
+            print(f"  Filtro: hierarchy_level_name = {ST_UPC_LEVEL}")
+        elif is_jugos:
+            print(f"  Filtro 1: hierarchy_level_name = {JUGOS_PESO_LEVEL} (todos los {JUGOS_CONTROLLED_LABEL_CORP_COLUMN})")
             print(
-                f"  SEGMENTO I requiere {CONTROLLED_LABEL_CORP_COLUMN} = "
-                f"{CONTROLLED_LABEL_CORP}"
+                f"  Filtro 2: hierarchy_level_name = {JUGOS_FABRICANTE_LEVEL} "
+                f"AND {JUGOS_CONTROLLED_LABEL_CORP_COLUMN} = {CONTROLLED_LABEL_CORP}"
             )
+            print("  Resultado: union de ambos filtros")
+        else:
+            print(f"  Filtro hierarchy_level_name IN ({', '.join(hierarchy_filter)})")
+            if _has_controlled_label_columns(source_columns) and SEGMENTO_I_LEVEL in hierarchy_filter:
+                print(
+                    f"  SEGMENTO I requiere {CONTROLLED_LABEL_CORP_COLUMN} = "
+                    f"{CONTROLLED_LABEL_CORP}"
+                )
+        print(f"  Filtro DOL > 0")
 
         connection.execute(
             f"""
@@ -361,7 +413,8 @@ def catalog_join_folder(
             )
             SELECT *
             FROM enriched
-            WHERE {hierarchy_where_sql}
+            WHERE ({hierarchy_where_sql})
+              AND {DOL_POSITIVE_FILTER}
             """
         )
 
@@ -416,6 +469,7 @@ def catalog_join_categories(
                         folder,
                         catalog_path,
                         is_st=is_st,
+                        category=categoria,
                         input_file=input_file,
                         output_file=output_file,
                         period_offset=period_offset,
