@@ -25,16 +25,11 @@ def main() -> int:
         base_path,
         categories,
         input_file=subset_settings["input_file"],
-        output_file=subset_settings["output_file"],
-        year=subset_settings["year"],
-        month=subset_settings["month"],
     )
     catalog_join_categories(
         base_path,
         categories,
         catalog_path,
-        input_file=catalog_settings["input_file"],
-        output_file=catalog_settings["output_file"],
         period_offset=catalog_settings["st_period_offset"],
         hierarchy_level_names=catalog_settings["hierarchy_level_names"],
     )

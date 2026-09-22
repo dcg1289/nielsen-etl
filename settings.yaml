@@ -24,12 +24,7 @@ transformation:
     output_file: joined.txt
   subset:
     input_file: joined.txt
-    output_file: joined_2026_07.txt
-    year: 2026
-    month: 7
   catalog:
-    input_file: joined_2026_07.txt
-    output_file: joined_2026_07_catalog.txt
     st_period_offset: 5800
     hierarchy_level_names:
       - SEGMENTO I

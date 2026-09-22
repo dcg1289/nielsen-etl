@@ -8,8 +8,15 @@ from pathlib import Path
 
 import duckdb
 
-DEFAULT_INPUT_FILE = "joined_2026_07.txt"
-DEFAULT_OUTPUT_FILE = "joined_2026_07_catalog.txt"
+from src.transformation.period_subset import (
+    DEFAULT_INPUT_FILE as SUBSET_SOURCE_FILE,
+    catalog_output_file,
+    detect_latest_period,
+    subset_output_file,
+)
+
+DEFAULT_INPUT_FILE = "joined.txt"
+DEFAULT_OUTPUT_FILE = "joined_catalog.txt"
 DEFAULT_HIERARCHY_LEVEL_NAMES = ("SEGMENTO I", "PRESENTACION REGULAR")
 SEGMENTO_I_LEVEL = "SEGMENTO I"
 CONTROLLED_LABEL_CORP = "CONTROLLED LABEL"
@@ -280,21 +287,43 @@ def _build_controlled_label_cte() -> str:
     """
 
 
+def _resolve_catalog_paths(
+    folder_path: Path,
+    joined_file: str = SUBSET_SOURCE_FILE,
+) -> tuple[Path, Path, int, int] | None:
+    joined_path = folder_path / joined_file
+    if not joined_path.exists():
+        return None
+
+    connection = duckdb.connect()
+    try:
+        year, month = detect_latest_period(connection, _posix(joined_path))
+    finally:
+        connection.close()
+
+    subset_path = folder_path / subset_output_file(year, month)
+    if not subset_path.exists():
+        return None
+
+    return subset_path, folder_path / catalog_output_file(year, month), year, month
+
+
 def catalog_join_folder(
     folder_path: Path,
     catalog_path: Path,
     is_st: bool,
     category: str = "",
-    input_file: str = DEFAULT_INPUT_FILE,
-    output_file: str = DEFAULT_OUTPUT_FILE,
+    input_file: str | None = None,
+    output_file: str | None = None,
     period_offset: int = 5800,
     hierarchy_level_names: list[str] | None = None,
 ) -> tuple[int, int] | None:
-    input_path = folder_path / input_file
-
-    if not input_path.exists():
-        print(f"  [SKIP] No existe {input_file} en {folder_path}")
+    resolved_paths = _resolve_catalog_paths(folder_path)
+    if resolved_paths is None:
+        print(f"  [SKIP] No existe subset para el ultimo periodo en {folder_path}")
         return None
+
+    input_path, output_path, year, month = resolved_paths
 
     products_file, periods_file, markets_file = _catalog_files(catalog_path, is_st)
     for catalog_file in (products_file, periods_file, markets_file):
@@ -302,7 +331,6 @@ def catalog_join_folder(
             print(f"  [SKIP] No existe catalogo: {catalog_file}")
             return None
 
-    output_path = folder_path / output_file
     source = _posix(input_path)
     output = _posix(output_path)
     products = _posix(products_file)
@@ -372,6 +400,8 @@ def catalog_join_folder(
             final_id_product_expr = catalog_id_product_expr
 
         print(f"\nAplicando catalogos en: {folder_path}")
+        print(f"  Periodo seleccionado: {year}-{month:02d}")
+        print(f"  Entrada: {input_path.name}")
         if is_st_upc:
             print(f"  Filtro: hierarchy_level_name = {ST_UPC_LEVEL}")
         elif is_jugos:
@@ -442,8 +472,8 @@ def catalog_join_categories(
     base_path: Path,
     categories: list[str],
     catalog_path: Path,
-    input_file: str = DEFAULT_INPUT_FILE,
-    output_file: str = DEFAULT_OUTPUT_FILE,
+    input_file: str | None = None,
+    output_file: str | None = None,
     period_offset: int = 5800,
     hierarchy_level_names: list[str] | None = None,
 ) -> None:
